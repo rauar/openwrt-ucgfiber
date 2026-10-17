@@ -59,9 +59,45 @@ define Device/qcom_rdp433
 endef
 TARGET_DEVICES += qcom_rdp433
 
+# The stock U-Boot loads uImage from an ext4 partition and the rootfs is a
+# squashfs file on another one. The kernel therefore boots a small initramfs
+# that loop mounts that file; see ucgfiber-initrd/.
+define Build/ucgfiber-initrd
+	READELF=$(TARGET_CROSS)readelf CPIO=$(STAGING_DIR_HOST)/bin/cpio \
+		$(SHELL) $(PLATFORM_DIR)/image/ucgfiber-initrd/mkinitrd.sh \
+		$(TARGET_DIR) $(PLATFORM_DIR)/image/ucgfiber-initrd/init \
+		$(KDIR)/ucgfiber-initrd.cpio
+endef
+
+# Fail the build on a truncated or sparse kernel image instead of shipping it.
+define Build/ucgfiber-check-kernel
+	grep -qa "Linux version" $@ || { \
+		echo "ucgfiber: kernel image has no version banner" >&2; exit 1; }
+endef
+
+# Same as "fit lzma <dtb> with-initrd", but with our own initrd instead of
+# $(KDIR)/initrd.cpio, which holds the whole rootfs.
+define Build/ucgfiber-fit
+	$(call Build/ucgfiber-initrd)
+	$(TOPDIR)/scripts/mkits.sh \
+		-D $(DEVICE_NAME) -o $@.its -k $@ \
+		-C lzma \
+		-d $(KDIR)/image-$(DEVICE_DTS).dtb \
+		-i $(KDIR)/ucgfiber-initrd.cpio \
+		-a $(KERNEL_LOADADDR) -e $(if $(KERNEL_ENTRY),$(KERNEL_ENTRY),$(KERNEL_LOADADDR)) \
+		$(if $(DEVICE_FDT_NUM),-n $(DEVICE_FDT_NUM)) \
+		$(if $(DEVICE_DTS_DELIMITER),-l $(DEVICE_DTS_DELIMITER)) \
+		$(if $(DEVICE_DTS_LOADADDR),-s $(DEVICE_DTS_LOADADDR)) \
+		-c $(if $(DEVICE_DTS_CONFIG),$(DEVICE_DTS_CONFIG),"config-1") \
+		-A $(LINUX_KARCH) -v $(LINUX_VERSION)
+	$(call Build/fit-image,lzma)
+endef
+
 define Device/ubnt_ucgfiber
 	$(call Device/FitImageLzma)
 	$(call Device/EmmcImage)
+	KERNEL = kernel-bin | ucgfiber-check-kernel | lzma | ucgfiber-fit
+	KERNEL_INITRAMFS :=
 	DEVICE_VENDOR := Ubiquiti Networks
 	DEVICE_MODEL := Cloud Gateway Fiber
 	SOC := ipq9574
