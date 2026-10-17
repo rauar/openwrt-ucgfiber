@@ -26,6 +26,11 @@ platform_do_upgrade() {
 		CI_ROOTPART="rootfs"
 		emmc_do_upgrade "$1"
 		;;
+	ubnt,ucgfiber)
+		CI_KERNPART="kernel"
+		CI_ROOTPART="root"
+		emmc_do_upgrade "$1"
+		;;
 	askey,sbe1v1k)
 		CI_KERNPART="0:HLOS"
 		CI_ROOTPART="rootfs"
