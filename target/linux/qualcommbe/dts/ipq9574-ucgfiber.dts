@@ -408,13 +408,16 @@
 	 *
 	 * Port 8 (SerDes 1, "10gbase-r" in the stock DT) is taken to be the CPU
 	 * link to ppe_port1; ports 4 to 7 are the four 2.5G LAN ports with
-	 * internal PHYs. Port 3 (SerDes 0) carries the RTL8261N 10G PHY at SMI
-	 * address 1 and is left out until that PHY has a driver for this
-	 * kernel. Not known from the stock firmware and left at their defaults:
-	 * the SerDes lane swaps and PHY polarity bits (sds*-rx/tx-swap,
-	 * phy-mdi-reverse, phy-tx-polarity-swap), and which front panel socket
-	 * is which port. The driver has no LED support, so the per-port LED
-	 * settings of the stock DT are not carried over.
+	 * internal PHYs. Port 3 (SerDes 0, "usxgmii") is the 10G copper port:
+	 * the RTL8261N PHY at SMI address 1, reached through the switch's own
+	 * MDIO bus. The stock firmware also marks port 3 as having an external
+	 * PHY (rtk_port_extphyid_set); the driver does not, so link polling for
+	 * that port is unverified, and the driver's author is unsure that its
+	 * USXGMII mode works. Not known from the stock firmware and left at
+	 * their defaults: the SerDes lane swaps and PHY polarity bits
+	 * (sds*-rx/tx-swap, phy-mdi-reverse, phy-tx-polarity-swap), and which
+	 * front panel socket is which port. The driver has no LED support, so
+	 * the per-port LED settings of the stock DT are not carried over.
 	 */
 	switch@1d {
 		compatible = "realtek,rtl8372n";
@@ -423,6 +426,13 @@
 		ports {
 			#address-cells = <1>;
 			#size-cells = <0>;
+
+			port@3 {
+				reg = <3>;
+				label = "wan";
+				phy-mode = "usxgmii";
+				phy-handle = <&switch_phy1>;
+			};
 
 			port@4 {
 				reg = <4>;
@@ -470,6 +480,11 @@
 		mdio {
 			#address-cells = <1>;
 			#size-cells = <0>;
+
+			switch_phy1: ethernet-phy@1 {
+				compatible = "ethernet-phy-ieee802.3-c45";
+				reg = <1>;
+			};
 
 			switch_phy4: ethernet-phy@4 {
 				compatible = "ethernet-phy-ieee802.3-c45";
