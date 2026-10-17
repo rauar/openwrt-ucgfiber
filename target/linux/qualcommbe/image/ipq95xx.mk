@@ -97,7 +97,10 @@ define Device/ubnt_ucgfiber
 	$(call Device/FitImageLzma)
 	$(call Device/EmmcImage)
 	KERNEL = kernel-bin | ucgfiber-check-kernel | lzma | ucgfiber-fit
-	KERNEL_INITRAMFS :=
+	# RAM-only test image: the kernel embeds the whole rootfs, nothing is
+	# read from or written to the eMMC (load with tftpboot, start with bootm)
+	KERNEL_INITRAMFS = kernel-bin | ucgfiber-check-kernel | lzma | \
+		fit lzma $$(KDIR)/image-$$(DEVICE_DTS).dtb
 	DEVICE_VENDOR := Ubiquiti Networks
 	DEVICE_MODEL := Cloud Gateway Fiber
 	SOC := ipq9574
