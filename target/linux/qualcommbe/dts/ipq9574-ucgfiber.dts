@@ -400,6 +400,98 @@
 	reset-delay-us = <100000>;
 	reset-post-delay-us = <100000>;
 	status = "okay";
+
+	/*
+	 * RTL8372N switch (stock: "realtek,rtl8372", phy-id 0x1d). It is reset
+	 * by the MDIO bus reset above and the GPIO 36 hog, not by a GPIO of
+	 * its own.
+	 *
+	 * Port 8 (SerDes 1, "10gbase-r" in the stock DT) is taken to be the CPU
+	 * link to ppe_port1; ports 4 to 7 are the four 2.5G LAN ports with
+	 * internal PHYs. Port 3 (SerDes 0) carries the RTL8261N 10G PHY at SMI
+	 * address 1 and is left out until that PHY has a driver for this
+	 * kernel. Not known from the stock firmware and left at their defaults:
+	 * the SerDes lane swaps and PHY polarity bits (sds*-rx/tx-swap,
+	 * phy-mdi-reverse, phy-tx-polarity-swap), and which front panel socket
+	 * is which port. The driver has no LED support, so the per-port LED
+	 * settings of the stock DT are not carried over.
+	 */
+	switch@1d {
+		compatible = "realtek,rtl8372n";
+		reg = <29>;
+
+		ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			port@4 {
+				reg = <4>;
+				label = "lan1";
+				phy-mode = "internal";
+				phy-handle = <&switch_phy4>;
+			};
+
+			port@5 {
+				reg = <5>;
+				label = "lan2";
+				phy-mode = "internal";
+				phy-handle = <&switch_phy5>;
+			};
+
+			port@6 {
+				reg = <6>;
+				label = "lan3";
+				phy-mode = "internal";
+				phy-handle = <&switch_phy6>;
+			};
+
+			port@7 {
+				reg = <7>;
+				label = "lan4";
+				phy-mode = "internal";
+				phy-handle = <&switch_phy7>;
+			};
+
+			port@8 {
+				reg = <8>;
+				label = "cpu";
+				ethernet = <&ppe_port1>;
+				phy-mode = "10gbase-r";
+
+				fixed-link {
+					speed = <10000>;
+					full-duplex;
+					pause;
+					asym-pause;
+				};
+			};
+		};
+
+		mdio {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			switch_phy4: ethernet-phy@4 {
+				compatible = "ethernet-phy-ieee802.3-c45";
+				reg = <4>;
+			};
+
+			switch_phy5: ethernet-phy@5 {
+				compatible = "ethernet-phy-ieee802.3-c45";
+				reg = <5>;
+			};
+
+			switch_phy6: ethernet-phy@6 {
+				compatible = "ethernet-phy-ieee802.3-c45";
+				reg = <6>;
+			};
+
+			switch_phy7: ethernet-phy@7 {
+				compatible = "ethernet-phy-ieee802.3-c45";
+				reg = <7>;
+			};
+		};
+	};
 };
 
 &qcom_ppe {
@@ -426,8 +518,10 @@
 				      "port_rx",
 				      "port_tx";
 
-			/* RTL8273 switch CPU port */
-			/* RTL8261N 10G PHY connected via switch? */
+			/*
+			 * Link to the RTL8372N switch (its port 8). The RTL8261N
+			 * 10G PHY is behind that switch, on its port 3.
+			 */
 			fixed-link {
 				speed = <10000>;
 				full-duplex;
