@@ -237,6 +237,20 @@
 };
 
 &tlmm {
+	/*
+	 * The stock firmware pulses two active-low resets for the devices on
+	 * mdio@90000 (RTL8372N switch, RTL8261N PHY), GPIO 36 first, then
+	 * GPIO 57. The MDIO bus takes a single reset-gpios, so GPIO 57 is the
+	 * bus reset and GPIO 36 is released here, before the bus is scanned.
+	 * Which line resets which chip is not known.
+	 */
+	mdio_reset_hog {
+		gpio-hog;
+		gpios = <36 GPIO_ACTIVE_HIGH>;
+		output-high;
+		line-name = "mdio-reset1-n";
+	};
+
 	spi_0_pins: spi-0-state {
 		pins = "gpio11", "gpio12", "gpio13", "gpio14";
 		function = "blsp0_spi";
@@ -382,6 +396,9 @@
 };
 
 &mdio {
+	reset-gpios = <&tlmm 57 GPIO_ACTIVE_LOW>;
+	reset-delay-us = <100000>;
+	reset-post-delay-us = <100000>;
 	status = "okay";
 };
 
