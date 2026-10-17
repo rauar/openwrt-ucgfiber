@@ -35,3 +35,9 @@ git-src
 .cproject
 .ccache
 .vscode*
+
+# local build logs and pid files
+build.log
+build.pid
+toolchain_build.log
+toolchain_build.pid
