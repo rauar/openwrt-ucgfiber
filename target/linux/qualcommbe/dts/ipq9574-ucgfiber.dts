@@ -177,6 +177,32 @@
 				reg = <0x4d0000 0x10000>;
 				label = "EEPROM";
 				read-only;
+
+				/*
+				 * Offset 0 is the label MAC (base), offset 6 the same
+				 * address with the locally administered bit set. The
+				 * stock firmware gives each port its own address:
+				 * 10G copper +0, LAN 1-4 +1..+4, SFP+ (PPE port 6) +5,
+				 * SFP+ (PPE port 5) +6, and the switch CPU link the
+				 * locally administered address +1.
+				 */
+				nvmem-layout {
+					compatible = "fixed-layout";
+					#address-cells = <1>;
+					#size-cells = <1>;
+
+					macaddr_eeprom_0: macaddr@0 {
+						compatible = "mac-base";
+						reg = <0x0 0x6>;
+						#nvmem-cell-cells = <1>;
+					};
+
+					macaddr_eeprom_6: macaddr@6 {
+						compatible = "mac-base";
+						reg = <0x6 0x6>;
+						#nvmem-cell-cells = <1>;
+					};
+				};
 			};
 
 			partition@4e0000 {
@@ -430,6 +456,8 @@
 			port@3 {
 				reg = <3>;
 				label = "wan";
+				nvmem-cells = <&macaddr_eeprom_0 0>;
+				nvmem-cell-names = "mac-address";
 				phy-mode = "usxgmii";
 				phy-handle = <&switch_phy1>;
 			};
@@ -437,6 +465,8 @@
 			port@4 {
 				reg = <4>;
 				label = "lan1";
+				nvmem-cells = <&macaddr_eeprom_0 1>;
+				nvmem-cell-names = "mac-address";
 				phy-mode = "internal";
 				phy-handle = <&switch_phy4>;
 			};
@@ -444,6 +474,8 @@
 			port@5 {
 				reg = <5>;
 				label = "lan2";
+				nvmem-cells = <&macaddr_eeprom_0 2>;
+				nvmem-cell-names = "mac-address";
 				phy-mode = "internal";
 				phy-handle = <&switch_phy5>;
 			};
@@ -451,6 +483,8 @@
 			port@6 {
 				reg = <6>;
 				label = "lan3";
+				nvmem-cells = <&macaddr_eeprom_0 3>;
+				nvmem-cell-names = "mac-address";
 				phy-mode = "internal";
 				phy-handle = <&switch_phy6>;
 			};
@@ -458,6 +492,8 @@
 			port@7 {
 				reg = <7>;
 				label = "lan4";
+				nvmem-cells = <&macaddr_eeprom_0 4>;
+				nvmem-cell-names = "mac-address";
 				phy-mode = "internal";
 				phy-handle = <&switch_phy7>;
 			};
@@ -518,6 +554,8 @@
 
 		ppe_port1: port@1 {
 			reg = <1>;
+			nvmem-cells = <&macaddr_eeprom_6 1>;
+			nvmem-cell-names = "mac-address";
 			phy-mode = "usxgmii";
 			pcs-handle = <&pcs0_ch0>;
 			clocks = <&nsscc NSS_CC_PORT1_MAC_CLK>,
@@ -547,6 +585,8 @@
 		ppe_port5: port@5 {
 			reg = <5>;
 			label = "sfp1";
+			nvmem-cells = <&macaddr_eeprom_0 6>;
+			nvmem-cell-names = "mac-address";
 			phy-mode = "usxgmii";
 			managed = "in-band-status";
 			pcs-handle = <&pcs1_ch0>;
@@ -568,6 +608,8 @@
 		ppe_port6: port@6 {
 			reg = <6>;
 			label = "sfp2";
+			nvmem-cells = <&macaddr_eeprom_0 5>;
+			nvmem-cell-names = "mac-address";
 			phy-mode = "usxgmii";
 			managed = "in-band-status";
 			pcs-handle = <&pcs2_ch0>;
