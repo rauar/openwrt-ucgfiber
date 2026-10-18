@@ -4,7 +4,7 @@ include $(TOPDIR)/rules.mk
 include $(INCLUDE_DIR)/kernel.mk
 
 PKG_NAME:=ctf2302
-PKG_RELEASE:=1
+PKG_RELEASE:=2
 PKG_LICENSE:=GPL-2.0-only
 
 include $(INCLUDE_DIR)/package.mk
@@ -20,7 +20,8 @@ endef
 define KernelPackage/hwmon-ctf2302/description
   Minimal driver for the Sensylink CTF2302 fan controller found in the
   Ubiquiti UniFi Cloud Gateway Fiber. It sets the chip up the way the
-  stock firmware does and exposes the fan duty cycle as pwm1.
+  stock firmware does and exposes three temperatures, two fan speeds and
+  the fan duty cycle (pwm1).
 endef
 
 define Build/Compile
