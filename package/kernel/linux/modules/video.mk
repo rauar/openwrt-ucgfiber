@@ -824,35 +824,10 @@ endef
 
 $(eval $(call KernelPackage,drm-imx-ldb))
 
-define KernelPackage/drm-client-log
-  SUBMENU:=$(VIDEO_MENU)
-  TITLE:=DRM kernel log client
-  DEPENDS:=video-support +kmod-drm-kms-helper
-  KCONFIG:= \
-	CONFIG_DRM_CLIENT_LOG=y \
-	CONFIG_DRM_CLIENT_DEFAULT_LOG=y
-  FILES:= \
-	$(LINUX_DIR)/drivers/gpu/drm/clients/drm_client_lib.ko \
-	$(LINUX_DIR)/lib/fonts/font.ko
-  AUTOLOAD:=$(call AutoProbe,font drm_client_lib)
-endef
-
-define KernelPackage/drm-client-log/description
-  Prints the kernel log on the first DRM display, without a VT or
-  framebuffer console. Needs a DRM driver that supports the in-kernel
-  clients (selects DRM_CLIENT_SELECTION), such as panel-mipi-dbi. Add
-  console=drm_log to the kernel command line to enable it. Ships the
-  font library as well (also part of kmod-fb, which is only available on
-  the framebuffer targets).
-endef
-
-$(eval $(call KernelPackage,drm-client-log))
-
 define KernelPackage/drm-panel-mipi-dbi
   SUBMENU:=$(VIDEO_MENU)
   TITLE:=Generic MIPI DBI LCD panel
-  DEPENDS:=+kmod-drm-mipi-dbi +kmod-drm-dma-helper \
-	+PACKAGE_kmod-drm-client-log:kmod-drm-client-log
+  DEPENDS:=+kmod-drm-mipi-dbi +kmod-drm-dma-helper
   KCONFIG:=CONFIG_DRM_PANEL_MIPI_DBI
   FILES:= \
 	$(LINUX_DIR)/drivers/gpu/drm/tiny/panel-mipi-dbi.ko

@@ -22,8 +22,6 @@
 
 	chosen {
 		stdout-path = "serial0:115200n8";
-		/* show the kernel log on the front panel display (drm_log) */
-		bootargs-append = " console=drm_log";
 	};
 
 	/* stock: 200 Hz, inverted levels (the pwm-ipq driver has no polarity) */
