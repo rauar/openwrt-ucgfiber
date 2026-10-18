@@ -322,13 +322,6 @@
 			bias-pull-down;
 			output-low;
 		};
-
-		wake-n-pins {
-			pins = "gpio32";
-			function = "pcie2_wake";
-			drive-strength = <6>;
-			bias-pull-up;
-		};
 	};
 
 	i2c3_pins: i2c3-pins {
@@ -576,15 +569,15 @@
 			clocks = <&nsscc NSS_CC_PORT1_MAC_CLK>,
 				 <&nsscc NSS_CC_PORT1_RX_CLK>,
 				 <&nsscc NSS_CC_PORT1_TX_CLK>;
-			clock-names = "port_mac",
-				      "port_rx",
-				      "port_tx";
+			clock-names = "mac",
+				      "rx",
+				      "tx";
 			resets = <&nsscc PORT1_MAC_ARES>,
 				 <&nsscc PORT1_RX_ARES>,
 				 <&nsscc PORT1_TX_ARES>;
-			reset-names = "port_mac",
-				      "port_rx",
-				      "port_tx";
+			reset-names = "mac",
+				      "rx",
+				      "tx";
 
 			/*
 			 * Link to the RTL8372N switch (its port 8). The RTL8261N
@@ -609,15 +602,15 @@
 			clocks = <&nsscc NSS_CC_PORT5_MAC_CLK>,
 				 <&nsscc NSS_CC_PORT5_RX_CLK>,
 				 <&nsscc NSS_CC_PORT5_TX_CLK>;
-			clock-names = "port_mac",
-				      "port_rx",
-				      "port_tx";
+			clock-names = "mac",
+				      "rx",
+				      "tx";
 			resets = <&nsscc PORT5_MAC_ARES>,
 				 <&nsscc PORT5_RX_ARES>,
 				 <&nsscc PORT5_TX_ARES>;
-			reset-names = "port_mac",
-				      "port_rx",
-				      "port_tx";
+			reset-names = "mac",
+				      "rx",
+				      "tx";
 		};
 
 		ppe_port6: port@6 {
@@ -632,15 +625,15 @@
 			clocks = <&nsscc NSS_CC_PORT6_MAC_CLK>,
 				 <&nsscc NSS_CC_PORT6_RX_CLK>,
 				 <&nsscc NSS_CC_PORT6_TX_CLK>;
-			clock-names = "port_mac",
-				      "port_rx",
-				      "port_tx";
+			clock-names = "mac",
+				      "rx",
+				      "tx";
 			resets = <&nsscc PORT6_MAC_ARES>,
 				 <&nsscc PORT6_RX_ARES>,
 				 <&nsscc PORT6_TX_ARES>;
-			reset-names = "port_mac",
-				      "port_rx",
-				      "port_tx";
+			reset-names = "mac",
+				      "rx",
+				      "tx";
 		};
 	};
 };
