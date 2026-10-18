@@ -1,0 +1,50 @@
+From: Alex Rau <alex@retroduction.org>
+Subject: [PATCH] rtl8372n: make the debugfs interface optional
+
+The debugfs directory gives root raw read and write access to the
+switch registers, its PHYs and SerDes, VLAN and L2 tables. It was
+always built in; CONFIG_RTL8372N_DSA_DEBUG only adds -DDEBUG.
+
+Build rtl837x_dbg.o only with CONFIG_RTL837X_DEBUGFS=y and stub out
+its init and deinit otherwise.
+
+diff --git a/src/Makefile b/src/Makefile
+index abfcb46..ecc1d42 100644
+--- a/src/Makefile
++++ b/src/Makefile
+@@ -15,7 +15,10 @@ ifeq ($(CONFIG_GPIOLIB),y)
+ rtl8372n_dsa-objs += rtl837x_gpio.o
+ endif
+ 
++ifeq ($(CONFIG_RTL837X_DEBUGFS),y)
++ccflags-y += -DRTL837X_DEBUGFS
+ rtl8372n_dsa-objs += rtl837x_dbg.o
++endif
+ rtl8372n_dsa-objs += rtl837x_mdio.o
+ rtl8372n_dsa-objs += rtl837x_common.o
+ rtl8372n_dsa-objs += rtl837x_common_l2.o
+diff --git a/src/rtl837x.h b/src/rtl837x.h
+index 5ca88e4..e4b8daa 100644
+--- a/src/rtl837x.h
++++ b/src/rtl837x.h
+@@ -321,8 +321,20 @@ extern int rtl837x_reg_bits_write(struct rtl837x_priv *priv, u32 reg, u32 mask,
+ extern int rtl837x_gpiochip_init(struct rtl837x_priv *priv);
+ extern enum rtk_sds_mode phy_interface_to_rtk_sds_mode(phy_interface_t interface);
+ 
++#ifdef RTL837X_DEBUGFS
+ extern int rtl837x_debug_proc_init(struct rtl837x_priv *priv);
+ extern int rtl837x_debug_proc_deinit(struct rtl837x_priv *priv);
++#else
++static inline int rtl837x_debug_proc_init(struct rtl837x_priv *priv)
++{
++	return 0;
++}
++
++static inline int rtl837x_debug_proc_deinit(struct rtl837x_priv *priv)
++{
++	return 0;
++}
++#endif
+ 
+ extern int rtl837x_phy_read_ocp(struct rtl837x_priv *priv, u16 phy, int regnum, u16 *pval);
+ extern int rtl837x_phy_write_ocp(struct rtl837x_priv *priv, u16 phy, int regnum, u16 val);

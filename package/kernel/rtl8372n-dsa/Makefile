@@ -4,7 +4,7 @@ include $(TOPDIR)/rules.mk
 include $(INCLUDE_DIR)/kernel.mk
 
 PKG_NAME:=rtl8372n-dsa
-PKG_RELEASE:=1
+PKG_RELEASE:=2
 
 PKG_SOURCE_PROTO:=git
 PKG_SOURCE_URL:=https://github.com/RuijieNetworksCommunity/rtl837x-dsa-driver.git
@@ -33,12 +33,17 @@ define KernelPackage/rtl8372n-dsa/description
   Ubiquiti UniFi Cloud Gateway Fiber.
 endef
 
+# The debugfs interface gives raw register access to the switch. Leave it
+# out unless building for bring-up: make ... RTL837X_DEBUGFS=y
+RTL837X_DEBUGFS ?= n
+
 define Build/Compile
 	+$(KERNEL_MAKE) $(PKG_JOBS) \
 		M="$(PKG_BUILD_DIR)/src" \
 		CONFIG_RTL8372N_DSA=m \
 		CONFIG_RTL837X_PHY_PATCH=y \
 		CONFIG_RTL8372N_DSA_DEBUG=n \
+		CONFIG_RTL837X_DEBUGFS=$(RTL837X_DEBUGFS) \
 		modules
 endef
 
