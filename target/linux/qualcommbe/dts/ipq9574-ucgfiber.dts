@@ -246,8 +246,27 @@
 		 * the regulators are brought up with 725mV which is sufficient for all the
 		 * corner parts to operate at 800MHz
 		 */
-			regulator-min-microvolt = <725000>;
+			/*
+			 * Keep the bootloader voltage (875 mV) as the floor instead of
+			 * dropping to 725 mV; cpufreq scales it from there (stock runs
+			 * this rail under CPR at 975 mV).
+			 */
+			regulator-min-microvolt = <875000>;
 			regulator-max-microvolt = <1075000>;
+		};
+
+		/*
+		 * s2: NSS/NPU rail. The stock kernel votes it to 875 mV through its NPU
+		 * CPR (range 700 mV to 1.0 V, always on). There is no l5 on this board:
+		 * the RPM rejects it with -ENXIO, and the regulator probe then aborts and
+		 * drops s1/l2 as well (so cpufreq-dt never probes). l5 was copied from
+		 * the reference board, where it feeds the USB/PCIe PHY PLLs.
+		 */
+		mp5496_s2: s2 {
+			regulator-min-microvolt = <875000>;
+			regulator-max-microvolt = <875000>;
+			regulator-always-on;
+			regulator-boot-on;
 		};
 
 		mp5496_l2: l2 {
@@ -257,12 +276,6 @@
 			regulator-boot-on;
 		};
 
-		mp5496_l5: l5 {
-			regulator-min-microvolt = <1800000>;
-			regulator-max-microvolt = <1800000>;
-			regulator-always-on;
-			regulator-boot-on;
-		};
 	};
 };
 
