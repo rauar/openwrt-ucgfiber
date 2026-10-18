@@ -88,8 +88,8 @@
 		compatible = "sff,sfp";
 		i2c-bus = <&blsp1_i2c4>;
 		mod-def0-gpios = <&tlmm 41 GPIO_ACTIVE_LOW>;
-		los-gpios = <&gpio_ext 2 GPIO_ACTIVE_HIGH>;
-		tx-disable-gpios = <&gpio_ext 1 GPIO_ACTIVE_HIGH>;
+		los-gpios = <&gpio_ext 6 GPIO_ACTIVE_HIGH>;
+		tx-disable-gpios = <&gpio_ext 5 GPIO_ACTIVE_HIGH>;
 		maximum-power-milliwatt = <3000>;
 	};
 
@@ -98,8 +98,8 @@
 		compatible = "sff,sfp";
 		i2c-bus = <&blsp1_i2c3>;
 		mod-def0-gpios = <&tlmm 40 GPIO_ACTIVE_LOW>;
-		los-gpios = <&gpio_ext 4 GPIO_ACTIVE_HIGH>;
-		tx-disable-gpios = <&gpio_ext 5 GPIO_ACTIVE_HIGH>;
+		los-gpios = <&gpio_ext 2 GPIO_ACTIVE_HIGH>;
+		tx-disable-gpios = <&gpio_ext 1 GPIO_ACTIVE_HIGH>;
 		maximum-power-milliwatt = <3000>;
 	};
 };
