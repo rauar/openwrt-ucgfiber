@@ -39,6 +39,15 @@
 
 #define DEFAULT_MAX_MBIT	1000
 
+#define COL_LINK_FAST	RGB(150, 255, 70)	/* 2.5 Gbit/s and more */
+#define COL_LINK_MID	RGB(255, 170, 0)	/* 1 Gbit/s */
+#define COL_LINK_SLOW	RGB(255, 60, 60)	/* below 1 Gbit/s */
+#define COL_LINK_DOWN	RGB(28, 44, 130)	/* no link: dim */
+
+#define BAR_H		24
+#define BAR_GAP		11
+#define NPORTS		7
+
 struct screen {
 	uint16_t *px;
 	unsigned int w, h, pitch;	/* pitch in pixels */
@@ -190,6 +199,43 @@ static int in_rrect(int x, int y, int rx, int ry, int rw, int rh, int r)
 }
 
 /*
+ * Coverage 0..16 of a rounded rectangle in the pixel (px, py), from 4x4
+ * samples; the geometry is scaled by 8. Samples at or right of clip_x are
+ * left out.
+ */
+static int rr_cov(int px, int py, int rx, int ry, int rw, int rh, int r, int clip_x)
+{
+	int sx, sy, n = 0;
+
+	for (sy = 0; sy < 4; sy++) {
+		for (sx = 0; sx < 4; sx++) {
+			int X = px * 8 + 2 * sx + 1, Y = py * 8 + 2 * sy + 1;
+
+			if (X < clip_x * 8 &&
+			    in_rrect(X, Y, rx * 8, ry * 8, rw * 8, rh * 8, r * 8))
+				n++;
+		}
+	}
+	return n;
+}
+
+/* mix: a/16 of src over dst */
+static uint16_t blend(uint16_t dst, uint16_t src, int a)
+{
+	int dr = ((dst >> 11) & 31) * 255 / 31, dg = ((dst >> 5) & 63) * 255 / 63;
+	int db = (dst & 31) * 255 / 31;
+	int sr = ((src >> 11) & 31) * 255 / 31, sg = ((src >> 5) & 63) * 255 / 63;
+	int sb = (src & 31) * 255 / 31;
+
+	if (a <= 0)
+		return dst;
+	if (a >= 16)
+		return src;
+	return RGB((dr * (16 - a) + sr * a) / 16, (dg * (16 - a) + sg * a) / 16,
+		   (db * (16 - a) + sb * a) / 16);
+}
+
+/*
  * One bar, 90 percent of the screen width: white frame, fill in the colour
  * of the KPI up to the fraction. Triangle at the left; the unit is right
  * aligned at the end of the bar in a field as wide as "Mbps", the value is
@@ -199,7 +245,7 @@ static void draw_bar(struct screen *s, int row, char mark, const char *val,
 		     const char *unit, double frac, uint16_t col)
 {
 	int bx = s->w / 20, bw = s->w - 2 * bx;
-	int bh = 24, r = 10, gap = 11, by = (s->h - (2 * bh + gap)) / 2 + row * (bh + gap);
+	int bh = BAR_H, r = 10, gap = BAR_GAP, by = (s->h - (2 * bh + gap)) / 2 + row * (bh + gap);
 	int fx = bx + 3, fw = bw - 6, fill, x, y;
 	int ty = by + (bh - 10) / 2, rx = bx + bw - 12;
 
@@ -213,17 +259,15 @@ static void draw_bar(struct screen *s, int row, char mark, const char *val,
 
 	for (y = by; y < by + bh; y++) {
 		for (x = bx; x < bx + bw; x++) {
-			uint16_t c;
+			uint16_t *px = &s->px[y * s->pitch + x];
+			int a;
 
-			if (in_rrect(x, y, bx, by, bw, bh, r) &&
-			    !in_rrect(x, y, bx + 1, by + 1, bw - 2, bh - 2, r - 1))
-				c = COL_FRAME;
-			else if (x < fx + fill &&
-				 in_rrect(x, y, bx + 3, by + 3, bw - 6, bh - 6, r - 3))
-				c = col;
-			else
-				continue;
-			s->px[y * s->pitch + x] = c;
+			/* fill first, then the 1 pixel frame on top; both smoothed */
+			a = rr_cov(x, y, bx + 3, by + 3, bw - 6, bh - 6, r - 3, fx + fill);
+			*px = blend(*px, col, a);
+			a = rr_cov(x, y, bx, by, bw, bh, r, 1 << 20) -
+			    rr_cov(x, y, bx + 1, by + 1, bw - 2, bh - 2, r - 1, 1 << 20);
+			*px = blend(*px, COL_FRAME, a);
 		}
 	}
 	put_glyph(s, bx + 9, ty, mark, COL_TEXT);
@@ -231,7 +275,64 @@ static void draw_bar(struct screen *s, int row, char mark, const char *val,
 	put_text(s, rx - text_width("Mbps") - 5 - text_width(val), ty, val, COL_TEXT);
 }
 
-static void draw_frame(struct screen *s, int valid, double down, double up, double max_bps)
+/* network devices in the order the marks are drawn */
+static const char * const ports[NPORTS] = {
+	"sfp1", "sfp2", "wan", "lan1", "lan2", "lan3", "lan4",
+};
+
+static int link_size = 4;
+
+static int read_u64(const char *path, uint64_t *v);
+
+/* 0 down, 1 up with unknown speed, else the speed in Mbit/s */
+static int read_link(const char *cls, const char *dev)
+{
+	char p[256];
+	uint64_t v;
+
+	snprintf(p, sizeof(p), "%s/%s/carrier", cls, dev);
+	if (read_u64(p, &v) || v != 1)
+		return 0;
+	snprintf(p, sizeof(p), "%s/%s/speed", cls, dev);
+	if (read_u64(p, &v) || v == 0 || v >= 1000000)
+		return 1;
+	return (int)v;
+}
+
+static uint16_t link_color(int mbit)
+{
+	if (mbit <= 0)
+		return COL_LINK_DOWN;
+	if (mbit == 1 || mbit >= 2500)
+		return COL_LINK_FAST;
+	return mbit >= 1000 ? COL_LINK_MID : COL_LINK_SLOW;
+}
+
+/* link state of the ports, centred in the gap between the two bars */
+static void draw_links(struct screen *s, const int *mbit)
+{
+	static const int off[NPORTS] = { 0, 12, 32, 52, 64, 76, 88 };
+	int sz = link_size, i, x, y;
+	int top = ((int)s->h - (2 * BAR_H + BAR_GAP)) / 2;
+	int y0 = top + BAR_H + (BAR_GAP - sz) / 2;
+	int x0 = ((int)s->w - (off[NPORTS - 1] + sz)) / 2;
+
+	for (i = 0; i < NPORTS; i++) {
+		uint16_t c = link_color(mbit[i]);
+
+		for (y = 0; y < sz; y++) {
+			for (x = 0; x < sz; x++) {
+				int dx = 2 * x + 1 - sz, dy = 2 * y + 1 - sz;
+
+				if (dx * dx + dy * dy <= sz * sz)
+					fill_rect(s, x0 + off[i] + x, y0 + y, 1, 1, c);
+			}
+		}
+	}
+}
+
+static void draw_frame(struct screen *s, int valid, double down, double up, double max_bps,
+		       const int *link)
 {
 	char v[16], u[8];
 
@@ -250,6 +351,7 @@ static void draw_frame(struct screen *s, int valid, double down, double up, doub
 		u[0] = 0;
 	}
 	draw_bar(s, 1, '^', v, u, valid ? up / max_bps : 0, COL_UP);
+	draw_links(s, link);
 }
 
 /* ---- WAN counters and link speed ---- */
@@ -458,14 +560,17 @@ static void usage(void)
 {
 	fprintf(stderr,
 		"usage: ucgfiber-lcd [-d DEV] [-m MBIT] [-D DRMDEV] [-C CLASSDIR]\n"
-		"                    [-o FILE] [-n FRAMES] [-r DOWN,UP]\n"
+		"                    [-o FILE] [-n FRAMES] [-r DOWN,UP] [-S MBIT,...] [-z SIZE]\n"
 		"  -d DEV      WAN network device (default br-wan)\n"
 		"  -m MBIT     rate for a full bar in Mbit/s (default: fastest WAN link, else %d)\n"
 		"  -D DRMDEV   DRM device (default /dev/dri/card0)\n"
 		"  -C CLASSDIR network class directory (default /sys/class/net)\n"
 		"  -o FILE     write the frame (raw RGB565 160x80) to FILE, not the display\n"
 		"  -n FRAMES   stop after FRAMES frames (default: run until stopped)\n"
-		"  -r DOWN,UP  show fixed rates in bit/s instead of reading counters\n",
+		"  -r DOWN,UP  show fixed rates in bit/s instead of reading counters\n"
+		"  -S L,L,L,L,L,L,L  show fixed link speeds in Mbit/s (0 = down) for sfp1, sfp2,\n"
+		"              wan, lan1 to lan4 instead of reading them\n"
+		"  -z SIZE     size of the link marks in pixels (default 4)\n",
 		DEFAULT_MAX_MBIT);
 }
 
@@ -480,9 +585,9 @@ int main(int argc, char **argv)
 	struct screen *scr;
 	struct timespec next, now, prev_t = { 0 };
 	uint64_t prx = 0, ptx = 0;
-	int have_prev = 0, c, warned = 0;
+	int have_prev = 0, c, warned = 0, fixed_on = 0, fixed_link[NPORTS] = { 0 };
 
-	while ((c = getopt(argc, argv, "d:m:D:C:o:n:r:h")) != -1) {
+	while ((c = getopt(argc, argv, "d:m:D:C:o:n:r:S:z:h")) != -1) {
 		switch (c) {
 		case 'd': dev = optarg; break;
 		case 'm': max_bps = atof(optarg) * 1e6; break;
@@ -490,6 +595,20 @@ int main(int argc, char **argv)
 		case 'C': cls = optarg; break;
 		case 'o': outfile = optarg; break;
 		case 'n': frames = strtoul(optarg, NULL, 10); break;
+		case 'S':
+			if (sscanf(optarg, "%d,%d,%d,%d,%d,%d,%d", &fixed_link[0], &fixed_link[1],
+				   &fixed_link[2], &fixed_link[3], &fixed_link[4], &fixed_link[5],
+				   &fixed_link[6]) != NPORTS) {
+				usage();
+				return 2;
+			}
+			fixed_on = 1;
+			break;
+		case 'z':
+			link_size = atoi(optarg);
+			if (link_size < 2 || link_size > 9)
+				link_size = 4;
+			break;
 		case 'r':
 			if (sscanf(optarg, "%lf,%lf", &fixed_down, &fixed_up) != 2) {
 				usage();
@@ -527,6 +646,7 @@ int main(int argc, char **argv)
 	clock_gettime(CLOCK_MONOTONIC, &next);
 	while (!stop) {
 		double down = 0, up = 0, dt, speed, mx;
+		int link[NPORTS];
 		uint64_t rx, tx;
 		int valid = 0;
 
@@ -556,7 +676,10 @@ int main(int argc, char **argv)
 		if (mx <= 0)
 			mx = DEFAULT_MAX_MBIT * 1e6;
 
-		draw_frame(scr, valid, down, up, mx);
+		for (c = 0; c < NPORTS; c++)
+			link[c] = fixed_on ? fixed_link[c] : read_link(cls, ports[c]);
+
+		draw_frame(scr, valid, down, up, mx, link);
 		if (outfile) {
 			FILE *f = fopen(outfile, "wb");
 
