@@ -22,6 +22,16 @@
 
 	chosen {
 		stdout-path = "serial0:115200n8";
+		/* show the kernel log on the front panel display (drm_log) */
+		bootargs-append = " console=drm_log";
+	};
+
+	/* stock: 200 Hz, inverted levels (the pwm-ipq driver has no polarity) */
+	backlight: backlight {
+		compatible = "pwm-backlight";
+		pwms = <&pwm 0 5000000 0>;
+		brightness-levels = <15 14 13 12 11 10 9 8 7 6 5 4 3 2 1 0>;
+		default-brightness-level = <12>;
 	};
 
 	regulator_fixed_3p3: s3300 {
@@ -289,6 +299,13 @@
 		function = "gpio";
 		drive-strength = <8>;
 		bias-pull-up;
+	};
+
+	pwm_pins: pwm-state {
+		pins = "gpio54";
+		function = "pwm";
+		drive-strength = <8>;
+		bias-disable;
 	};
 
 	gpio_leds_default: gpio-leds-default-state {
@@ -693,13 +710,37 @@
 	pinctrl-0 = <&spi1_pins>;
 	pinctrl-names = "default";
 
+	/*
+	 * ST7735S, 160x80 landscape. The stock st7735fb driver uses MADCTL 0xa8
+	 * and places the 80 rows at row 24 of the controller RAM.
+	 */
 	display@0 {
-//		compatible = "st7735fb";
-		compatible = "jd-t18003-t01";
+		compatible = "ubnt,ucgfiber-lcd", "panel-mipi-dbi-spi";
 		reg = <0>;
 		spi-max-frequency = <15000000>;
 		dc-gpios = <&tlmm 63 GPIO_ACTIVE_HIGH>;
 		reset-gpios = <&tlmm 60 GPIO_ACTIVE_HIGH>;
-		status = "ok";
+		backlight = <&backlight>;
+		write-only;
+		width-mm = <22>;
+		height-mm = <11>;
+
+		panel-timing {
+			hactive = <160>;
+			vactive = <80>;
+			hback-porch = <0>;
+			vback-porch = <24>;
+			clock-frequency = <0>;
+			hfront-porch = <0>;
+			hsync-len = <0>;
+			vfront-porch = <0>;
+			vsync-len = <0>;
+		};
 	};
+};
+
+&pwm {
+	pinctrl-0 = <&pwm_pins>;
+	pinctrl-names = "default";
+	status = "okay";
 };

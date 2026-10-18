@@ -106,7 +106,8 @@ define Device/ubnt_ucgfiber
 	SOC := ipq9574
 	DEVICE_PACKAGES := kmod-gpio-pca953x kmod-iio-st_accel-i2c kmod-hwmon-ctf2302 kmod-hwmon-lm63 \
 			   kmod-phy-realtek kmod-rtc-s35390a kmod-rtl8372n-dsa kmod-sfp \
-			   rtl826x-firmware \
+			   rtl826x-firmware kmod-backlight-pwm kmod-drm-client-log \
+			   mipi-dbi-ubnt-ucgfiber video-support \
 			   -wpad-basic-mbedtls -kmod-usb3 -kmod-usb-dwc3 -kmod-usb-dwc3-qcom
 endef
 TARGET_DEVICES += ubnt_ucgfiber
