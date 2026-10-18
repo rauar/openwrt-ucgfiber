@@ -577,7 +577,14 @@
 			reg = <1>;
 			nvmem-cells = <&macaddr_eeprom_6 1>;
 			nvmem-cell-names = "mac-address";
-			phy-mode = "usxgmii";
+			/*
+			 * 10GBASE-R, not USXGMII: the stock firmware runs this link with the
+			 * XPCS in plain 10GBASE-R (DIG_CTRL1 0x2000, no USXG_EN, MII AN off)
+			 * although its DT labels dp1 "usxgmii"; the switch side (port 8) is
+			 * 10gbase-r too. Note: the link still does not block-lock reliably
+			 * and most received frames have a bad CRC (open issue).
+			 */
+			phy-mode = "10gbase-r";
 			pcs-handle = <&pcs0_ch0>;
 			clocks = <&nsscc NSS_CC_PORT1_MAC_CLK>,
 				 <&nsscc NSS_CC_PORT1_RX_CLK>,
