@@ -269,6 +269,18 @@
 			regulator-boot-on;
 		};
 
+		/*
+		 * s4: MX rail, an RPM level (corner) regulator, not a voltage
+		 * (values are level numbers). The stock kernel holds level 5
+		 * through its NSS driver (mx-supply); nothing else votes it.
+		 */
+		mp5496_s4: s4 {
+			regulator-min-microvolt = <5>;
+			regulator-max-microvolt = <5>;
+			regulator-always-on;
+			regulator-boot-on;
+		};
+
 		mp5496_l2: l2 {
 			regulator-min-microvolt = <1800000>;
 			regulator-max-microvolt = <1800000>;
