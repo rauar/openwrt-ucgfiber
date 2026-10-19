@@ -735,11 +735,10 @@
 		ch-dis = <0x2000>;
 	};
 
-	lm63@4c {
-		compatible = "national,lm63";
-		reg = <0x4c>;
-		tachometer-en;
-	};
+	/*
+	 * No LM63: the stock DT declares lm63@4c, but nothing answers at 0x4c
+	 * on this board (i2cdetect on stock); the fan is driven by the CTF2302.
+	 */
 };
 
 &blsp1_spi1 {
