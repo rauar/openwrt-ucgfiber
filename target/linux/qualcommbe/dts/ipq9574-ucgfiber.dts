@@ -658,6 +658,18 @@
 	};
 };
 
+/*
+ * SerDes analog tuning of the two SFP+ uniphys, from the stock DT
+ * (ess-uniphy "de-emphasis"). The CPU link (uniphy0) has none.
+ */
+&pcs1 {
+	qcom,serdes-tuning = <0x7c4 0x1f4f>, <0x21c 0x288a>, <0x19c 0xbe20>;
+};
+
+&pcs2 {
+	qcom,serdes-tuning = <0x7c4 0x1e65>, <0x21c 0x288a>, <0x19c 0xbe00>;
+};
+
 &blsp1_i2c3 {
 	pinctrl-0 = <&i2c3_pins>;
 	pinctrl-names = "default";
