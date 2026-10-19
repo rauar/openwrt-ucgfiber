@@ -3,12 +3,14 @@
 #
 # Upgrade for the UniFi Cloud Gateway Fiber.
 #
-# The "kernel" and "root" GPT partitions each hold an ext4 filesystem rather
-# than a raw image. The kernel partition holds uImage / uImage.bkp and the
-# root partition holds rootfs / rootfs.bkp. U-Boot (bootdebbox) and the
-# initramfs /init read those files, so the sysupgrade tar members are
-# installed as files. A raw dd to either partition destroys the filesystem
-# and the unit no longer boots.
+# OpenWrt is installed next to the stock firmware (dual boot, see
+# ucgfiber-dualboot.sh): its kernel is the file uImage.owrt in the ext4
+# "kernel" partition, its system the file rootfs.owrt in the ext4 "root"
+# partition, its settings live in the "rootfs_data" partition. U-Boot boots
+# whichever kernel is named uImage. The sysupgrade tar members are installed
+# as those files through ucgfiber-dualboot.sh; stock's files are never
+# written. A raw write to either partition would destroy the file system
+# and both systems with it.
 
 UCGFIBER_MNT="${UCGFIBER_MNT:-/tmp}"
 
@@ -53,27 +55,22 @@ ucgfiber_check_image() { # <image>
 		echo "ucgfiber: root is not a squashfs image" >&2
 		return 1
 	}
+	db_find_part kernel >/dev/null && db_find_part root >/dev/null || {
+		echo "ucgfiber: kernel/root partitions not found" >&2
+		return 1
+	}
+	db_find_part rootfs_data >/dev/null ||
+		echo "ucgfiber: no rootfs_data partition; settings cannot be kept" >&2
 	return 0
 }
 
-# Unmount every mount of a block device. Fails if it stays busy.
-ucgfiber_umount_dev() { # <dev>
-	local dev="$1" mp n=0
-
-	while grep -q "^$dev " /proc/mounts; do
-		[ "$n" -lt 5 ] || return 1
-		mp="$(grep -m 1 "^$dev " /proc/mounts | cut -d' ' -f2)"
-		umount "$mp" 2>/dev/null || sleep 1
-		n=$((n + 1))
-	done
-	return 0
-}
-
+# mount an ext4 partition read-write. The running system's root partition
+# stays mounted (lazily detached) during stage 2; mounting it again gives
+# the same file system, which works because /init mounts it read-write.
 ucgfiber_mount() { # <dev> <dir>
 	local n=0
 
 	mkdir -p "$2" || return 1
-	# a lazily detached mount of the same device can still be draining
 	while ! mount -t ext4 -o rw,noatime "$1" "$2" 2>/dev/null; do
 		n=$((n + 1))
 		[ "$n" -lt 5 ] || {
@@ -84,52 +81,51 @@ ucgfiber_mount() { # <dev> <dir>
 	done
 }
 
-# Write a tar member to <mountpoint>/<name>.new and verify it from disk.
-ucgfiber_stage() { # <image> <member> <mountpoint> <name>
-	local file="$3/$4.new"
-
-	rm -f "$file"
-	ucgfiber_member "$1" "$2" >"$file" || return 1
-	sync
-	{ echo 3 >/proc/sys/vm/drop_caches; } 2>/dev/null
-	ucgfiber_member "$1" "$2" | cmp -s - "$file"
-}
-
-# Keep the current file as <name>.bkp, then replace it atomically. The hard
-# link plus rename means a valid <name> exists at every point.
-ucgfiber_swap() { # <mountpoint> <name>
-	if [ -e "$1/$2" ]; then
-		ln -f "$1/$2" "$1/$2.bkp" || return 1
-	fi
-	mv -f "$1/$2.new" "$1/$2"
-}
-
 ucgfiber_do_upgrade() { # <image>
-	local img="$1" dir kdev rdev kmnt rmnt rc=1
+	local img="$1" dir kdev rdev ddev kmnt rmnt kimg rimg rc=1
 
-	kdev="${EMMC_KERN_DEV:-$(find_mmc_part kernel)}"
-	rdev="${EMMC_ROOT_DEV:-$(find_mmc_part root)}"
-	[ -b "$kdev" ] && [ -b "$rdev" ] || {
+	kdev="$(db_find_part kernel)" && rdev="$(db_find_part root)" || {
 		echo "ucgfiber: kernel/root partitions not found" >&2
 		return 1
 	}
 	dir="$(ucgfiber_board_dir "$img")" || return 1
 	kmnt="$UCGFIBER_MNT/ucgfiber-kernel"
 	rmnt="$UCGFIBER_MNT/ucgfiber-root"
+	kimg="$UCGFIBER_MNT/ucgfiber-new-kernel"
+	rimg="$UCGFIBER_MNT/ucgfiber-new-root"
 
-	# Nothing is written until both new files are staged and verified.
-	if ucgfiber_umount_dev "$kdev" && ucgfiber_umount_dev "$rdev" &&
+	# the members as files: their hashes become the stored ones
+	if ucgfiber_member "$img" "$dir/kernel" >"$kimg" &&
+	   ucgfiber_member "$img" "$dir/root" >"$rimg" &&
 	   ucgfiber_mount "$kdev" "$kmnt" && ucgfiber_mount "$rdev" "$rmnt" &&
-	   ucgfiber_stage "$img" "$dir/kernel" "$kmnt" uImage &&
-	   ucgfiber_stage "$img" "$dir/root" "$rmnt" rootfs &&
-	   ucgfiber_swap "$kmnt" uImage &&
-	   ucgfiber_swap "$rmnt" rootfs; then
+	   db_install_owrt "$kmnt" "$rmnt" "$kimg" "$rimg"; then
 		rc=0
 	else
-		echo "ucgfiber: upgrade failed, installed files left unchanged" >&2
-		rm -f "$kmnt/uImage.new" "$rmnt/rootfs.new"
+		echo "ucgfiber: upgrade failed" >&2
 	fi
 	sync
-	umount "$kmnt" "$rmnt" 2>/dev/null
+	umount "$kmnt" 2>/dev/null
+	umount "$rmnt" 2>/dev/null
+	rm -f "$kimg" "$rimg"
+
+	# without a config backup, start with fresh settings (as the generic
+	# eMMC upgrade does): fstools formats rootfs_data on the next boot
+	if [ "$rc" = 0 ] && [ -z "$UPGRADE_BACKUP" ] && ddev="$(db_find_part rootfs_data)"; then
+		dd if=/dev/zero of="$ddev" bs=512 count=8 2>/dev/null
+		sync
+	fi
 	return $rc
+}
+
+# the config backup goes to the start of rootfs_data; fstools unpacks it
+# and formats the partition on the next boot (as the generic eMMC upgrade)
+ucgfiber_copy_config() {
+	local ddev
+
+	ddev="$(db_find_part rootfs_data)" || {
+		echo "ucgfiber: no rootfs_data partition; settings not kept" >&2
+		return 0
+	}
+	dd if="$UPGRADE_BACKUP" of="$ddev" bs=512 2>/dev/null
+	sync
 }

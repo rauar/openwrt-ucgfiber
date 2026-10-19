@@ -54,5 +54,8 @@ platform_copy_config() {
 	askey,sbe1v1k)
 		emmc_copy_config
 		;;
+	ubnt,ucgfiber)
+		ucgfiber_copy_config
+		;;
 	esac
 }

@@ -23,7 +23,7 @@ OUT="$3"
 
 READELF="${READELF:-readelf}"
 CPIO="${CPIO:-cpio}"
-APPLETS="cat echo ls mkdir mknod mount sh sleep switch_root umount"
+APPLETS="cat cut echo grep ls mkdir mknod mount sed sh sha256sum sleep switch_root umount"
 
 tmp="$(mktemp -d)"
 chmod 0755 "$tmp"
