@@ -8,6 +8,12 @@
  * an arrow, the rate of the last second and a bar that is filled by the rate
  * relative to the fastest known WAN link speed.
  *
+ * Between the bars, one mark per port shows the link speed by colour. Like
+ * a port LED, the mark of a port that has traffic blinks: the marks are
+ * checked every TICK_MS and an active port's mark is off on every other
+ * tick. Only the strip with the marks is sent to the panel between the
+ * once-per-second full frames.
+ *
  * With -o FILE the frame is written to FILE (raw RGB565, 160x80) instead of
  * the display; this is for testing on a host.
  */
@@ -43,6 +49,9 @@
 #define COL_LINK_MID	RGB(255, 170, 0)	/* 1 Gbit/s */
 #define COL_LINK_SLOW	RGB(255, 60, 60)	/* below 1 Gbit/s */
 #define COL_LINK_DOWN	RGB(28, 44, 130)	/* no link: dim */
+
+#define TICK_MS		100	/* port marks */
+#define TICKS_PER_FRAME	10	/* rates and bars: once per second */
 
 #define BAR_H		24
 #define BAR_GAP		11
@@ -308,31 +317,49 @@ static uint16_t link_color(int mbit)
 	return mbit >= 1000 ? COL_LINK_MID : COL_LINK_SLOW;
 }
 
-/* link state of the ports, centred in the gap between the two bars */
-static void draw_links(struct screen *s, const int *mbit)
+/* colour of a mark: off on every other tick while the port has traffic */
+static uint16_t mark_color(int mbit, int active, int phase)
 {
-	static const int off[NPORTS] = { 0, 12, 32, 52, 64, 76, 88 };
-	int sz = link_size, i, x, y;
-	int top = ((int)s->h - (2 * BAR_H + BAR_GAP)) / 2;
-	int y0 = top + BAR_H + (BAR_GAP - sz) / 2;
-	int x0 = ((int)s->w - (off[NPORTS - 1] + sz)) / 2;
+	if (mbit > 0 && active && phase)
+		return COL_BG;
+	return link_color(mbit);
+}
 
+static const int mark_off[NPORTS] = { 0, 12, 32, 52, 64, 76, 88 };
+
+/* strip with the marks, centred in the gap between the two bars */
+static void links_rect(const struct screen *s, int *x0, int *y0, int *w, int *h)
+{
+	int top = ((int)s->h - (2 * BAR_H + BAR_GAP)) / 2;
+
+	*w = mark_off[NPORTS - 1] + link_size;
+	*h = link_size;
+	*x0 = ((int)s->w - *w) / 2;
+	*y0 = top + BAR_H + (BAR_GAP - link_size) / 2;
+}
+
+static void draw_links(struct screen *s, const uint16_t *col)
+{
+	int sz = link_size, i, x, y, x0, y0, w, h;
+
+	links_rect(s, &x0, &y0, &w, &h);
+	fill_rect(s, x0, y0, w, h, COL_BG);
 	for (i = 0; i < NPORTS; i++) {
-		uint16_t c = link_color(mbit[i]);
+		uint16_t c = col[i];
 
 		for (y = 0; y < sz; y++) {
 			for (x = 0; x < sz; x++) {
 				int dx = 2 * x + 1 - sz, dy = 2 * y + 1 - sz;
 
 				if (dx * dx + dy * dy <= sz * sz)
-					fill_rect(s, x0 + off[i] + x, y0 + y, 1, 1, c);
+					fill_rect(s, x0 + mark_off[i] + x, y0 + y, 1, 1, c);
 			}
 		}
 	}
 }
 
 static void draw_frame(struct screen *s, int valid, double down, double up, double max_bps,
-		       const int *link)
+		       const uint16_t *marks)
 {
 	char v[16], u[8];
 
@@ -351,7 +378,7 @@ static void draw_frame(struct screen *s, int valid, double down, double up, doub
 		u[0] = 0;
 	}
 	draw_bar(s, 1, '^', v, u, valid ? up / max_bps : 0, COL_UP);
-	draw_links(s, link);
+	draw_links(s, marks);
 }
 
 /* ---- WAN counters and link speed ---- */
@@ -371,6 +398,22 @@ static int read_u64(const char *path, uint64_t *v)
 	errno = 0;
 	*v = strtoull(b, NULL, 10);
 	return errno ? -1 : 0;
+}
+
+/* rx + tx packets of a port, for its activity */
+static int read_packets(const char *cls, const char *dev, uint64_t *pkts)
+{
+	char p[256];
+	uint64_t rx, tx;
+
+	snprintf(p, sizeof(p), "%s/%s/statistics/rx_packets", cls, dev);
+	if (read_u64(p, &rx))
+		return -1;
+	snprintf(p, sizeof(p), "%s/%s/statistics/tx_packets", cls, dev);
+	if (read_u64(p, &tx))
+		return -1;
+	*pkts = rx + tx;
+	return 0;
 }
 
 static int read_counters(const char *cls, const char *dev, uint64_t *rx, uint64_t *tx)
@@ -538,9 +581,15 @@ fail:
 	return -1;
 }
 
-static void drm_present(struct drm_out *o)
+/* send the frame, or only the clip rectangle of it, to the panel */
+static void drm_present(struct drm_out *o, const struct drm_clip_rect *clip)
 {
 	struct drm_mode_fb_dirty_cmd d = { .fb_id = o->fb_id };
+
+	if (clip) {
+		d.clips_ptr = (uintptr_t)clip;
+		d.num_clips = 1;
+	}
 
 	if (ioctl(o->fd, DRM_IOCTL_MODE_DIRTYFB, &d) < 0 && errno != ENOSYS) {
 		static int warned;
@@ -560,18 +609,19 @@ static void usage(void)
 {
 	fprintf(stderr,
 		"usage: ucgfiber-lcd [-d DEV] [-m MBIT] [-D DRMDEV] [-C CLASSDIR]\n"
-		"                    [-o FILE] [-n FRAMES] [-r DOWN,UP] [-S MBIT,...] [-z SIZE]\n"
+		"                    [-o FILE] [-n TICKS] [-r DOWN,UP] [-S MBIT,...] [-a MASK] [-z SIZE]\n"
 		"  -d DEV      WAN network device (default br-wan)\n"
 		"  -m MBIT     rate for a full bar in Mbit/s (default: fastest WAN link, else %d)\n"
 		"  -D DRMDEV   DRM device (default /dev/dri/card0)\n"
 		"  -C CLASSDIR network class directory (default /sys/class/net)\n"
 		"  -o FILE     write the frame (raw RGB565 160x80) to FILE, not the display\n"
-		"  -n FRAMES   stop after FRAMES frames (default: run until stopped)\n"
+		"  -n TICKS    stop after TICKS updates of %d ms (default: run until stopped)\n"
 		"  -r DOWN,UP  show fixed rates in bit/s instead of reading counters\n"
 		"  -S L,L,L,L,L,L,L  show fixed link speeds in Mbit/s (0 = down) for sfp1, sfp2,\n"
 		"              wan, lan1 to lan4 instead of reading them\n"
+		"  -a MASK     fixed port activity, bit 0 = sfp1 ... bit 6 = lan4 (for tests)\n"
 		"  -z SIZE     size of the link marks in pixels (default 4)\n",
-		DEFAULT_MAX_MBIT);
+		DEFAULT_MAX_MBIT, TICK_MS);
 }
 
 int main(int argc, char **argv)
@@ -579,22 +629,28 @@ int main(int argc, char **argv)
 	const char *dev = "br-wan", *drm = "/dev/dri/card0", *cls = "/sys/class/net";
 	const char *outfile = NULL;
 	double fixed_down = -1, fixed_up = -1, max_bps = 0;
-	unsigned long frames = 0, n = 0;
+	unsigned long ticks = 0, n = 0;
 	struct drm_out out = { .fd = -1 };
 	struct screen file_scr = { 0 };
 	struct screen *scr;
 	struct timespec next, now, prev_t = { 0 };
 	uint64_t prx = 0, ptx = 0;
 	int have_prev = 0, c, warned = 0, fixed_on = 0, fixed_link[NPORTS] = { 0 };
+	int fixed_act = -1, have_pkts[NPORTS] = { 0 }, link[NPORTS] = { 0 };
+	uint64_t ppkts[NPORTS] = { 0 };
+	uint16_t shown[NPORTS] = { 0 };
+	double down = 0, up = 0, mx = 0;
+	int valid = 0;
 
-	while ((c = getopt(argc, argv, "d:m:D:C:o:n:r:S:z:h")) != -1) {
+	while ((c = getopt(argc, argv, "d:m:D:C:o:n:r:S:a:z:h")) != -1) {
 		switch (c) {
 		case 'd': dev = optarg; break;
 		case 'm': max_bps = atof(optarg) * 1e6; break;
 		case 'D': drm = optarg; break;
 		case 'C': cls = optarg; break;
 		case 'o': outfile = optarg; break;
-		case 'n': frames = strtoul(optarg, NULL, 10); break;
+		case 'n': ticks = strtoul(optarg, NULL, 10); break;
+		case 'a': fixed_act = (int)strtol(optarg, NULL, 0); break;
 		case 'S':
 			if (sscanf(optarg, "%d,%d,%d,%d,%d,%d,%d", &fixed_link[0], &fixed_link[1],
 				   &fixed_link[2], &fixed_link[3], &fixed_link[4], &fixed_link[5],
@@ -645,54 +701,95 @@ int main(int argc, char **argv)
 
 	clock_gettime(CLOCK_MONOTONIC, &next);
 	while (!stop) {
-		double down = 0, up = 0, dt, speed, mx;
-		int link[NPORTS];
+		int full = (n % TICKS_PER_FRAME) == 0, phase = n & 1, changed = 0;
+		uint16_t marks[NPORTS];
+		double dt, speed;
 		uint64_t rx, tx;
-		int valid = 0;
 
-		clock_gettime(CLOCK_MONOTONIC, &now);
-		if (fixed_down >= 0) {
-			down = fixed_down;
-			up = fixed_up;
-			valid = 1;
-		} else if (!read_counters(cls, dev, &rx, &tx)) {
-			dt = (now.tv_sec - prev_t.tv_sec) + (now.tv_nsec - prev_t.tv_nsec) / 1e9;
-			if (have_prev) {
-				down = rate_bps(rx, prx, dt);
-				up = rate_bps(tx, ptx, dt);
+		if (full) {
+			clock_gettime(CLOCK_MONOTONIC, &now);
+			valid = 0;
+			if (fixed_down >= 0) {
+				down = fixed_down;
+				up = fixed_up;
 				valid = 1;
+			} else if (!read_counters(cls, dev, &rx, &tx)) {
+				dt = (now.tv_sec - prev_t.tv_sec) + (now.tv_nsec - prev_t.tv_nsec) / 1e9;
+				if (have_prev) {
+					down = rate_bps(rx, prx, dt);
+					up = rate_bps(tx, ptx, dt);
+					valid = 1;
+				}
+				prx = rx;
+				ptx = tx;
+				prev_t = now;
+				have_prev = 1;
+			} else {
+				have_prev = 0;
 			}
-			prx = rx;
-			ptx = tx;
-			prev_t = now;
-			have_prev = 1;
-		} else {
-			have_prev = 0;
+
+			mx = max_bps;
+			if (mx <= 0 && (speed = link_speed_bps(cls, dev)) > 0)
+				mx = speed;
+			if (mx <= 0)
+				mx = DEFAULT_MAX_MBIT * 1e6;
 		}
 
-		mx = max_bps;
-		if (mx <= 0 && (speed = link_speed_bps(cls, dev)) > 0)
-			mx = speed;
-		if (mx <= 0)
-			mx = DEFAULT_MAX_MBIT * 1e6;
+		for (c = 0; c < NPORTS; c++) {
+			int active = 0;
+			uint64_t pk;
 
-		for (c = 0; c < NPORTS; c++)
 			link[c] = fixed_on ? fixed_link[c] : read_link(cls, ports[c]);
+			if (fixed_act >= 0) {
+				active = (fixed_act >> c) & 1;
+			} else if (!read_packets(cls, ports[c], &pk)) {
+				active = have_pkts[c] && pk != ppkts[c];
+				ppkts[c] = pk;
+				have_pkts[c] = 1;
+			} else {
+				have_pkts[c] = 0;
+			}
+			marks[c] = mark_color(link[c], active, phase);
+			if (marks[c] != shown[c])
+				changed = 1;
+		}
 
-		draw_frame(scr, valid, down, up, mx, link);
-		if (outfile) {
+		if (full) {
+			draw_frame(scr, valid, down, up, mx, marks);
+			if (!outfile)
+				drm_present(&out, NULL);
+		} else if (changed) {
+			struct drm_clip_rect clip;
+			int x0, y0, w, h;
+
+			draw_links(scr, marks);
+			links_rect(scr, &x0, &y0, &w, &h);
+			clip.x1 = x0;
+			clip.y1 = y0;
+			clip.x2 = x0 + w;
+			clip.y2 = y0 + h;
+			if (!outfile)
+				drm_present(&out, &clip);
+		}
+		memcpy(shown, marks, sizeof(shown));
+
+		if (outfile && (full || changed)) {
 			FILE *f = fopen(outfile, "wb");
 
 			if (!f || fwrite(scr->px, sizeof(uint16_t), 160 * 80, f) != 160 * 80)
 				return 1;
 			fclose(f);
-		} else {
-			drm_present(&out);
 		}
 
-		if (frames && ++n >= frames)
+		if (ticks && ++n >= ticks)
 			break;
-		next.tv_sec++;
+		if (!ticks)
+			n++;
+		next.tv_nsec += TICK_MS * 1000000L;
+		if (next.tv_nsec >= 1000000000L) {
+			next.tv_nsec -= 1000000000L;
+			next.tv_sec++;
+		}
 		clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &next, NULL);
 	}
 	return 0;
