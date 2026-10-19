@@ -429,15 +429,19 @@
 	clock-frequency = <48000000>;
 };
 
+/*
+ * eMMC as stock runs it: HS200 at up to 192 MHz, no command queueing.
+ * In HS400 Enhanced Strobe with CQE at 384 MHz (as on the reference
+ * boards) bulk reads on this board end in CQE recovery and I/O errors.
+ */
 &sdhc_1 {
 	pinctrl-0 = <&sdc_default_state>;
 	pinctrl-names = "default";
 	mmc-ddr-1_8v;
 	mmc-hs200-1_8v;
-	mmc-hs400-1_8v;
-	mmc-hs400-enhanced-strobe;
-	max-frequency = <384000000>;
+	max-frequency = <192000000>;
 	bus-width = <8>;
+	/delete-property/ supports-cqe;
 	status = "okay";
 };
 
