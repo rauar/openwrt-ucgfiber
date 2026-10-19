@@ -481,6 +481,23 @@
 		compatible = "realtek,rtl8372n";
 		reg = <29>;
 
+		/*
+		 * LED and LED-pin setup of the stock firmware, as read from the
+		 * running stock firmware (the driver has no LED code): LAN ports
+		 * 4-7 on LED set 3, the set behaviour, pin output enable and pin
+		 * mux. This board has no LEDs at the RJ45 ports; the values are
+		 * kept so that the switch's LED pins are set up as on stock.
+		 * <register mask value>
+		 */
+		extra-init = <0x6524 0xffffffff 0xf5001400>,	/* LED3_0_SET3_2_CTRL1 */
+			     <0x6528 0xffffffff 0x00000005>,	/* LED3_0_SET1_0_CTRL1 */
+			     <0x652c 0xffffffff 0x007f017d>,	/* LED3_2_SET3_CTRL0 */
+			     <0x6548 0xffffffff 0x0154017d>,	/* LED1_0_SET0_CTRL0 */
+			     <0x654c 0xffffffff 0x0000ff00>,	/* LED_PORT_SET_SEL */
+			     <0x65e0 0xffffffff 0x3fffffe0>,	/* LED_GLB_MUX_1 */
+			     <0x65e4 0xffffffff 0x0c6bffde>,	/* LED_GLB_MUX_2 */
+			     <0x65dc 0xffffffff 0x5fffff21>;	/* LED_GLB_IO_EN */
+
 		ports {
 			#address-cells = <1>;
 			#size-cells = <0>;
