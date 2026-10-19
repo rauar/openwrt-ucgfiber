@@ -247,11 +247,11 @@
 		 * corner parts to operate at 800MHz
 		 */
 			/*
-			 * Keep the bootloader voltage (875 mV) as the floor instead of
-			 * dropping to 725 mV; cpufreq scales it from there (stock runs
-			 * this rail under CPR at 975 mV).
+			 * 725 mV as on the reference board: the CPU OPPs from 936 MHz
+			 * to 1.416 GHz need 725-862.5 mV and are dropped by cpufreq
+			 * with a higher floor (stock runs this rail under CPR).
 			 */
-			regulator-min-microvolt = <875000>;
+			regulator-min-microvolt = <725000>;
 			regulator-max-microvolt = <1075000>;
 		};
 
