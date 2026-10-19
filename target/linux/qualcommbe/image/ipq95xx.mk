@@ -104,7 +104,7 @@ define Device/ubnt_ucgfiber
 	DEVICE_VENDOR := Ubiquiti Networks
 	DEVICE_MODEL := Cloud Gateway Fiber
 	SOC := ipq9574
-	DEVICE_PACKAGES := kmod-gpio-pca953x kmod-iio-st_accel-i2c kmod-hwmon-ctf2302 kmod-hwmon-lm63 \
+	DEVICE_PACKAGES := kmod-gpio-pca953x kmod-iio-st_accel-i2c kmod-hwmon-ctf2302 \
 			   kmod-phy-realtek kmod-rtc-s35390a kmod-rtl8372n-dsa kmod-sfp \
 			   rtl826x-firmware kmod-backlight-pwm ucgfiber-lcd \
 			   mipi-dbi-ubnt-ucgfiber video-support ethtool-full mkf2fs f2fsck \
