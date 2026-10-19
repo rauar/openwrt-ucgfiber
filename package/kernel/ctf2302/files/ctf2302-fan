@@ -2,17 +2,20 @@
 # Simple fan control for the Sensylink CTF2302 (Ubiquiti UCG-Fiber).
 #
 # Every INTERVAL seconds, take the hottest of the CTF2302 temperatures and
-# the SoC thermal zones and set pwm1 on a linear curve: PWM_MIN at or below
-# T_LOW, PWM_MAX at or above T_HIGH. PWM_MIN is the duty the stock firmware
-# starts the fan with, so the fan never runs slower than on stock at boot.
-# The duty rises at once and falls by at most STEP_DOWN per interval. If no
-# temperature can be read, the fan runs at PWM_MAX. On exit it is left at
-# PWM_MAX.
+# the SoC thermal zones. Like the stock firmware, the fan is off (duty 0)
+# while the board is cool: it starts once the hottest reading reaches T_ON
+# and stops again at or below T_OFF (hysteresis). While it runs, pwm1
+# follows a linear curve from PWM_MIN at T_ON to PWM_MAX at or above
+# T_HIGH. PWM_MIN is the duty the stock firmware starts the fan with. The
+# duty rises at once and falls by at most STEP_DOWN per interval while the
+# fan runs. If no temperature can be read, the fan runs at PWM_MAX. On exit
+# it is left at PWM_MAX.
 
 SYS="${CTF2302_SYSFS:-/sys}"
 INTERVAL="${CTF2302_INTERVAL:-5}"
-T_LOW=45000
-T_HIGH=75000
+T_OFF=50000
+T_ON=55000
+T_HIGH=80000
 PWM_MIN=110
 PWM_MAX=255
 STEP_DOWN=8
@@ -48,15 +51,26 @@ max_temp() {
 	echo "$max"
 }
 
+# sets WANT; FAN_ON (0/1) keeps the hysteresis state between calls
 target_pwm() {
 	local t="$1"
 
 	if [ -z "$t" ] || [ "$t" -ge "$T_HIGH" ]; then
-		echo "$PWM_MAX"
-	elif [ "$t" -le "$T_LOW" ]; then
-		echo "$PWM_MIN"
+		FAN_ON=1
+		WANT="$PWM_MAX"
+		return
+	fi
+	if [ "$t" -ge "$T_ON" ]; then
+		FAN_ON=1
+	elif [ "$t" -le "$T_OFF" ]; then
+		FAN_ON=0
+	fi
+	if [ "$FAN_ON" != 1 ]; then
+		WANT=0
+	elif [ "$t" -le "$T_ON" ]; then
+		WANT="$PWM_MIN"
 	else
-		echo $((PWM_MIN + (t - T_LOW) * (PWM_MAX - PWM_MIN) / (T_HIGH - T_LOW)))
+		WANT=$((PWM_MIN + (t - T_ON) * (PWM_MAX - PWM_MIN) / (T_HIGH - T_ON)))
 	fi
 }
 
@@ -68,13 +82,14 @@ step() {
 		log "no temperature readable, fan at full speed"
 		NO_TEMP_LOGGED=1
 	}
-	want="$(target_pwm "$t")"
+	target_pwm "$t"
+	want="$WANT"
 	read -r cur < "$HWMON/pwm1" 2>/dev/null || cur="$PWM_MAX"
 	case "$cur" in
 		""|*[!0-9]*) cur="$PWM_MAX" ;;
 	esac
-	[ "$want" -lt "$cur" ] && [ $((cur - want)) -gt "$STEP_DOWN" ] &&
-		want=$((cur - STEP_DOWN))
+	[ "$want" -gt 0 ] && [ "$want" -lt "$cur" ] &&
+		[ $((cur - want)) -gt "$STEP_DOWN" ] && want=$((cur - STEP_DOWN))
 	[ "$want" = "$cur" ] || echo "$want" > "$HWMON/pwm1"
 }
 
@@ -89,7 +104,7 @@ until HWMON="$(find_hwmon)"; do
 done
 
 trap 'echo "$PWM_MAX" > "$HWMON/pwm1"; exit 0' INT TERM
-log "controlling $HWMON/pwm1 ($PWM_MIN-$PWM_MAX, $((T_LOW / 1000))-$((T_HIGH / 1000)) C)"
+log "controlling $HWMON/pwm1 (off <= $((T_OFF / 1000)) C, on >= $((T_ON / 1000)) C at $PWM_MIN, $PWM_MAX at $((T_HIGH / 1000)) C)"
 
 if [ -n "$CTF2302_ONCE" ]; then
 	step

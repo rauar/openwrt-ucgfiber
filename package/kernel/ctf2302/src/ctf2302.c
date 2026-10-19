@@ -1,19 +1,21 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Minimal driver for the Sensylink CTF2302 fan controller.
+ * Sensylink CTF2302 fan controller, as used on the Ubiquiti UniFi Cloud
+ * Gateway Fiber.
  *
- * No datasheet is available. The register addresses and the values written
- * at probe come from the stock UCG-Fiber firmware, which programs these six
- * registers with 16 bit SMBus word writes in this order and then leaves the
- * fan duty cycle in the low byte of register 0x40 (0..255).
+ * All registers are big endian 16 bit words. The probe writes the same
+ * six registers as the stock firmware, in its order and with its values
+ * (each can be overridden from the device tree with the stock property
+ * names).
  *
- * Temperature and tachometer registers are big endian 16 bit words holding a
- * 12 bit value in the upper bits. Temperatures are offset binary in 1/16 degC
- * steps (value / 16 - 64 degC), the tachometer value converts to RPM as
- * 983040 / value, with 0 and 0xfff meaning no reading. The stock driver
- * exposes registers 0x00-0x02 as temp1-3 (labelled Local, CPU and PMIC by
- * the stock userland) and 0x05/0x06 as fan1/fan2; 0x03 and 0x04 are read
- * but not exposed.
+ * Register 0x40 holds the fan duty cycle in its high byte (0..255) and a
+ * control field in its low byte. The stock driver keeps the control field
+ * at the low byte of its probe value (0x6e) and only changes the duty;
+ * with the control field at 0 the chip ignores the duty and runs the fan
+ * at full speed.
+ *
+ * Temperature and tachometer registers hold a 12 bit value in their upper
+ * bits: temperature = value / 16 - 64 degC, fan = 983040 / value RPM.
  */
 
 #include <linux/delay.h>
@@ -36,6 +38,7 @@
 struct ctf2302_data {
 	struct i2c_client *client;
 	struct mutex lock;
+	u8 dcy_ctrl;	/* control field in the low byte of 0x40 */
 };
 
 struct ctf2302_init_reg {
@@ -120,11 +123,11 @@ static int ctf2302_read(struct device *dev, enum hwmon_sensor_types type,
 	case hwmon_pwm:
 		if (attr != hwmon_pwm_input)
 			return -EOPNOTSUPP;
-		ret = i2c_smbus_read_word_data(data->client,
-					       CTF2302_REG_FAN_DCY_CTRL);
+		ret = i2c_smbus_read_word_swapped(data->client,
+						  CTF2302_REG_FAN_DCY_CTRL);
 		if (ret < 0)
 			return ret;
-		*val = ret & 0xff;
+		*val = (ret >> 8) & 0xff;
 		return 0;
 	default:
 		return -EOPNOTSUPP;
@@ -154,8 +157,9 @@ static int ctf2302_write(struct device *dev, enum hwmon_sensor_types type,
 	val = clamp_val(val, 0, 255);
 
 	mutex_lock(&data->lock);
-	ret = i2c_smbus_write_word_data(data->client,
-					CTF2302_REG_FAN_DCY_CTRL, val);
+	ret = i2c_smbus_write_word_swapped(data->client,
+					   CTF2302_REG_FAN_DCY_CTRL,
+					   (val << 8) | data->dcy_ctrl);
 	mutex_unlock(&data->lock);
 
 	return ret;
@@ -212,11 +216,14 @@ static int ctf2302_probe(struct i2c_client *client)
 		val = r->def;
 		of_property_read_u32(dev->of_node, r->prop, &val);
 
-		ret = i2c_smbus_write_word_data(client, r->reg, val);
+		ret = i2c_smbus_write_word_swapped(client, r->reg, val);
 		if (ret < 0)
 			return dev_err_probe(dev, ret,
 					     "write 0x%04x to reg 0x%02x failed\n",
 					     val, r->reg);
+
+		if (r->reg == CTF2302_REG_FAN_DCY_CTRL)
+			data->dcy_ctrl = val & 0xff;
 	}
 
 	hwmon_dev = devm_hwmon_device_register_with_info(dev, client->name,
