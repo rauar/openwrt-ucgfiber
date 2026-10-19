@@ -23,7 +23,7 @@ sequence differed. Other interface modes keep the previous behaviour.
 ---
 --- a/drivers/net/pcs/pcs-qcom-ipq9574.c
 +++ b/drivers/net/pcs/pcs-qcom-ipq9574.c
-@@ -305,13 +305,22 @@
+@@ -305,13 +305,22 @@ static void ipq_pcs_get_state_10gbaser(s
  	state->pause |= MLO_PAUSE_TXRX_MASK;
  }
  
@@ -48,7 +48,7 @@ sequence differed. Other interface modes keep the previous behaviour.
  		return 0;
  
  	ret = clk_prepare_enable(qpcs->qpcs_mii[0]->rx_clk);
-@@ -330,7 +339,7 @@
+@@ -330,7 +339,7 @@ static int ipq_pcs_config_mode(struct ip
  	int ret;
  
  	/* The port clocks must be held off across the reconfiguration */
@@ -57,7 +57,7 @@ sequence differed. Other interface modes keep the previous behaviour.
  		clk_disable_unprepare(qpcs->qpcs_mii[0]->rx_clk);
  		clk_disable_unprepare(qpcs->qpcs_mii[0]->tx_clk);
  	}
-@@ -398,8 +407,11 @@
+@@ -398,8 +407,11 @@ static int ipq_pcs_config_mode(struct ip
  			goto err_clk;
  	}
  
@@ -71,7 +71,7 @@ sequence differed. Other interface modes keep the previous behaviour.
  		ret = regmap_update_bits(qpcs->regmap, PCS_LINK_DETECT,
  					 PCS_DETECT_LOS_FROM_SFP, 0);
  		if (ret)
-@@ -435,7 +447,8 @@
+@@ -435,7 +447,8 @@ static int ipq_pcs_config_mode(struct ip
  			goto err_clk;
  
  		msleep(100);

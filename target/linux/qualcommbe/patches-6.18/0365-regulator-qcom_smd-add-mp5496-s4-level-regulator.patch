@@ -13,7 +13,7 @@ regulator to the MP5496 table.
 ---
 --- a/drivers/regulator/qcom_smd-regulator.c
 +++ b/drivers/regulator/qcom_smd-regulator.c
-@@ -27,6 +27,7 @@
+@@ -27,6 +27,7 @@ struct qcom_rpm_reg {
  	unsigned int enabled_updated:1;
  	unsigned int uv_updated:1;
  	unsigned int load_updated:1;
@@ -21,7 +21,7 @@ regulator to the MP5496 table.
  };
  
  struct rpm_regulator_req {
-@@ -38,10 +39,11 @@
+@@ -38,10 +39,11 @@ struct rpm_regulator_req {
  #define RPM_KEY_SWEN	0x6e657773 /* "swen" */
  #define RPM_KEY_UV	0x00007675 /* "uv" */
  #define RPM_KEY_MA	0x0000616d /* "ma" */
@@ -34,7 +34,7 @@ regulator to the MP5496 table.
  	int reqlen = 0;
  	int ret;
  
-@@ -59,6 +61,13 @@
+@@ -59,6 +61,13 @@ static int rpm_reg_write_active(struct q
  		reqlen++;
  	}
  
@@ -48,7 +48,7 @@ regulator to the MP5496 table.
  	if (vreg->load_updated && vreg->is_enabled) {
  		req[reqlen].key = cpu_to_le32(RPM_KEY_MA);
  		req[reqlen].nbytes = cpu_to_le32(sizeof(u32));
-@@ -76,6 +85,7 @@
+@@ -76,6 +85,7 @@ static int rpm_reg_write_active(struct q
  		vreg->enabled_updated = 0;
  		vreg->uv_updated = 0;
  		vreg->load_updated = 0;
@@ -56,7 +56,7 @@ regulator to the MP5496 table.
  	}
  
  	return ret;
-@@ -144,6 +154,26 @@
+@@ -144,6 +154,26 @@ static int rpm_reg_set_voltage(struct re
  	return ret;
  }
  
@@ -83,7 +83,7 @@ regulator to the MP5496 table.
  static int rpm_reg_set_load(struct regulator_dev *rdev, int load_uA)
  {
  	struct qcom_rpm_reg *vreg = rdev_get_drvdata(rdev);
-@@ -207,6 +237,16 @@
+@@ -207,6 +237,16 @@ static const struct regulator_ops rpm_mp
  	.set_voltage = rpm_reg_set_voltage,
  };
  
@@ -100,7 +100,7 @@ regulator to the MP5496 table.
  static const struct regulator_desc pma8084_hfsmps = {
  	.linear_ranges = (struct linear_range[]) {
  		REGULATOR_LINEAR_RANGE(375000,  0,  95, 12500),
-@@ -756,6 +796,16 @@
+@@ -756,6 +796,16 @@ static const struct regulator_desc mp549
  	.ops = &rpm_mp5496_ops,
  };
  
@@ -117,7 +117,7 @@ regulator to the MP5496 table.
  static const struct regulator_desc mp5496_ldoa2 = {
  	.linear_ranges = (struct linear_range[]) {
  		REGULATOR_LINEAR_RANGE(800000, 0, 127, 25000),
-@@ -794,6 +844,7 @@
+@@ -794,6 +844,7 @@ struct rpm_regulator_data {
  static const struct rpm_regulator_data rpm_mp5496_regulators[] = {
  	{ "s1", QCOM_SMD_RPM_SMPA, 1, &mp5496_smps, "s1" },
  	{ "s2", QCOM_SMD_RPM_SMPA, 2, &mp5496_smps, "s2" },
