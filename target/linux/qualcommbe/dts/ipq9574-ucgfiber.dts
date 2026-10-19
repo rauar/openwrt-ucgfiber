@@ -491,6 +491,10 @@
 				nvmem-cells = <&macaddr_eeprom_0 0>;
 				nvmem-cell-names = "mac-address";
 				phy-mode = "usxgmii";
+				/* the switch's USXGMII PCS needs in-band signalling,
+				 * as the stock SDK runs it (auto-negotiation on)
+				 */
+				managed = "in-band-status";
 				phy-handle = <&switch_phy1>;
 			};
 
